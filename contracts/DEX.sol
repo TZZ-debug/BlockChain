@@ -15,6 +15,18 @@ contract DEX is Ownable, ReentrancyGuard {
     uint256 public token1Balance;
     uint256 public token2Balance;
 
+    struct Trade {
+        address user;
+        string operation;
+        address tokenIn;
+        uint256 amountIn;
+        address tokenOut;
+        uint256 amountOut;
+        uint256 timestamp;
+    }
+
+    Trade[] public trades; // 存储交易记录
+
     event LiquidityAdded(address indexed provider, uint256 token1Amount, uint256 token2Amount);
     event LiquidityRemoved(address indexed provider, uint256 token1Amount, uint256 token2Amount);
     event Swap(address indexed user, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut);
@@ -45,6 +57,17 @@ contract DEX is Ownable, ReentrancyGuard {
         token1Balance += _token1Amount;
         token2Balance += _token2Amount;
 
+        // 记录添加流动性操作
+        trades.push(Trade({
+            user: msg.sender,
+            operation: "AddLiquidity",
+            tokenIn: address(0), // 不适用
+            amountIn: _token1Amount + _token2Amount,
+            tokenOut: address(0), // 不适用
+            amountOut: 0,
+            timestamp: block.timestamp
+        }));
+
         emit LiquidityAdded(msg.sender, _token1Amount, _token2Amount);
     }
 
@@ -60,6 +83,17 @@ contract DEX is Ownable, ReentrancyGuard {
         require(selectedBalance >= amount, "Insufficient token balance");
 
         selectedToken.safeTransferFrom(msg.sender, address(this), amount);
+
+        // 记录添加单个流动性操作
+        trades.push(Trade({
+            user: msg.sender,
+            operation: "AddSingleLiquidity",
+            tokenIn: address(0),// 不适用
+            amountIn: amount,
+            tokenOut: address(0),// 不适用
+            amountOut: 0,
+            timestamp: block.timestamp
+        }));
 
         if (token == address(token1)) {
             token1Balance += amount;
@@ -81,6 +115,17 @@ contract DEX is Ownable, ReentrancyGuard {
         token1.safeTransfer(owner(), _token1Amount);
         token2.safeTransfer(owner(), _token2Amount);
 
+        // 记录移除流动性操作
+        trades.push(Trade({
+            user: msg.sender,
+            operation: "RemoveLiquidity",
+            tokenIn: address(0), // 不适用
+            amountIn: _token1Amount + _token2Amount,
+            tokenOut: address(0), // 不适用
+            amountOut: 0,
+            timestamp: block.timestamp
+        }));
+
         emit LiquidityRemoved(owner(), _token1Amount, _token2Amount);
     }
 
@@ -98,6 +143,17 @@ contract DEX is Ownable, ReentrancyGuard {
         tokenIn.safeTransferFrom(msg.sender, address(this), _amountIn);
         tokenOut.safeTransfer(msg.sender, amountOut);
 
+        // 记录交易
+        trades.push(Trade({
+            user: msg.sender,
+            operation: "Swap",
+            tokenIn: _tokenIn,
+            amountIn: _amountIn,
+            tokenOut: address(tokenOut),
+            amountOut: amountOut,
+            timestamp: block.timestamp
+        }));
+
         if (_tokenIn == address(token1)) {
             token1Balance += _amountIn;
             token2Balance -= amountOut;
@@ -107,6 +163,10 @@ contract DEX is Ownable, ReentrancyGuard {
         }
 
         emit Swap(msg.sender, _tokenIn, _amountIn, address(tokenOut), amountOut);
+    }
+
+    function getTradeHistory() public view returns (Trade[] memory) {
+        return trades;
     }
 
     function swapWithSlippage(address _tokenIn, uint256 _amountIn, uint256 _minAmountOut) external nonReentrant returns (uint256 amountOut) {
