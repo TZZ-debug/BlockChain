@@ -48,6 +48,29 @@ contract DEX is Ownable, ReentrancyGuard {
         emit LiquidityAdded(msg.sender, _token1Amount, _token2Amount);
     }
 
+    function addSingleLiquidity(address token, uint256 amount) external nonReentrant {
+        require(amount > 0, "Amount must be greater than 0");
+        require(token == address(token1) || token == address(token2), "Invalid token address");
+
+        IERC20 selectedToken = token == address(token1) ? token1 : token2;
+        uint256 selectedBalance = selectedToken.balanceOf(msg.sender);
+        uint256 selectedAllowance = selectedToken.allowance(msg.sender, address(this));
+
+        require(selectedAllowance >= amount, "Insufficient token allowance");
+        require(selectedBalance >= amount, "Insufficient token balance");
+
+        selectedToken.safeTransferFrom(msg.sender, address(this), amount);
+
+        if (token == address(token1)) {
+            token1Balance += amount;
+            emit LiquidityAdded(msg.sender, amount, 0);
+        } else {
+            token2Balance += amount;
+            emit LiquidityAdded(msg.sender, 0, amount);
+        }
+    }
+
+
     function removeLiquidity(uint256 _token1Amount, uint256 _token2Amount) external onlyOwner nonReentrant {
         require(_token1Amount > 0 && _token2Amount > 0, "Amounts must be greater than 0");
         require(token1Balance >= _token1Amount && token2Balance >= _token2Amount, "Insufficient liquidity");
