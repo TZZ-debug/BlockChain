@@ -47,7 +47,6 @@ contract TokenMarket is Ownable, ReentrancyGuard {
     function collectFees() external {
         require(msg.sender == feeCollector, "Only fee collector can collect fees");
         uint256 feesToCollect = accumulatedFees / FEE_PRECISION;
-        require(feesToCollect > 0, "No fees to collect");
         
         accumulatedFees = accumulatedFees % FEE_PRECISION;
         
@@ -89,7 +88,7 @@ contract TokenMarket is Ownable, ReentrancyGuard {
 
         emit TokenListed(_token, _priceInWei, _amount);
     }
-
+ 
     // 下架代币
     function delistToken(address _token) external onlyOwner {
         TokenInfo storage tokenInfo = listedTokens[_token];
@@ -193,6 +192,12 @@ contract TokenMarket is Ownable, ReentrancyGuard {
             userTokenBalances[msg.sender][_token],
             marketFeeRate
         );
+    }
+
+    // 实时余额更新函数，用于监控 User 合约中的金额变化
+    function updateUserBalance(address user, address _token) public {
+        IERC20 tokenContract = IERC20(_token);
+        userTokenBalances[user][_token] = tokenContract.balanceOf(user);
     }
 
     // 接收ETH的回退函数
