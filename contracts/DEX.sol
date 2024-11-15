@@ -41,7 +41,7 @@ contract DEX is Ownable, ReentrancyGuard {
     }
 
     // 添加流动性函数：同时添加两种代币
-    function addLiquidity(uint256 _token1Amount, uint256 _token2Amount) external nonReentrant {
+    function addLiquidity(uint256 _token1Amount, uint256 _token2Amount) external onlyOwner nonReentrant {
         require(_token1Amount > 0 && _token2Amount > 0, "Amounts must be greater than 0");
         
         // 检查授权额度
@@ -79,7 +79,7 @@ contract DEX is Ownable, ReentrancyGuard {
     }
 
     // 添加单个Token流动性
-    function addSingleLiquidity(address token, uint256 amount) external nonReentrant {
+    function addSingleLiquidity(address token, uint256 amount) external onlyOwner nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
         require(token == address(token1) || token == address(token2), "Invalid token address");
 
@@ -144,10 +144,12 @@ contract DEX is Ownable, ReentrancyGuard {
 
     // 代币交换功能
     function swap(address _tokenIn, uint256 _amountIn) public nonReentrant returns (uint256 amountOut) {
+        // 验证输入参数
         require(_tokenIn == address(token1) || _tokenIn == address(token2), "Invalid token");
         require(_amountIn > 0, "Amount must be greater than 0");
 
         // 确定输入和输出代币的地址
+        // 该swap函数中，tokenIn相当于支出的代币（把代币放进交易所），而tokenOut是想要换取的代币
         IERC20 tokenIn = IERC20(_tokenIn);
         IERC20 tokenOut = _tokenIn == address(token1) ? token2 : token1;
 
@@ -157,11 +159,20 @@ contract DEX is Ownable, ReentrancyGuard {
         // 检查支付账户是否满足要求
         require(amountOut > 0 && amountOut <= tokenOut.balanceOf(address(this)), "Insufficient liquidity");
 
-        // 执行交换
+        // 执行代币转移
         tokenIn.safeTransferFrom(msg.sender, address(this), _amountIn);
         tokenOut.safeTransfer(msg.sender, amountOut);
 
-        // 记录交易
+        // 更新流动性池余额
+        if (_tokenIn == address(token1)) {
+            token1Balance += _amountIn;
+            token2Balance -= amountOut;
+        } else {
+            token2Balance += _amountIn;
+            token1Balance -= amountOut;
+        }
+
+        // 记录交易信息
         trades.push(Trade({
             user: msg.sender,
             operation: "Swap",
@@ -172,15 +183,6 @@ contract DEX is Ownable, ReentrancyGuard {
             timestamp: block.timestamp
         }));
 
-        // 更新余额
-        if (_tokenIn == address(token1)) {
-            token1Balance += _amountIn;
-            token2Balance -= amountOut;
-        } else {
-            token2Balance += _amountIn;
-            token1Balance -= amountOut;
-        }
-
         emit Swap(msg.sender, _tokenIn, _amountIn, address(tokenOut), amountOut);
     }
 
@@ -189,7 +191,7 @@ contract DEX is Ownable, ReentrancyGuard {
         return trades;
     }
 
-    // 带滑点保护的交换功能
+    // 带滑点保护的交换功能，通过设置最小接受数量来防止大额交易的价格影响
     function swapWithSlippage(address _tokenIn, uint256 _amountIn, uint256 _minAmountOut) external nonReentrant returns (uint256 amountOut) {
         // 调用swap函数获取实际输出金额
         amountOut = swap(_tokenIn, _amountIn);
@@ -198,7 +200,7 @@ contract DEX is Ownable, ReentrancyGuard {
         return amountOut;
     }
 
-    // 计算交换输出金额（使用恒定乘积公式）
+    // 计算交换得到的代币数量（使用恒定乘积公式，并收取0.3%手续费）
     function calculateSwapOutput(address _tokenIn, uint256 _amountIn) internal view returns (uint256) {
         uint256 reserveIn = _tokenIn == address(token1) ? token1Balance : token2Balance;
         uint256 reserveOut = _tokenIn == address(token1) ? token2Balance : token1Balance;
